@@ -1,0 +1,17 @@
+﻿torch==2.9.0
+torchvision==0.24.0
+numpy>=1.24
+pandas>=2.0
+scikit-learn>=1.4
+matplotlib>=3.8
+seaborn>=0.13
+opencv-python>=4.8
+albumentations>=1.4
+scikit-image>=0.22
+pyyaml>=6.0
+rich>=13.7
+tqdm>=4.66
+thop>=0.1.1.post2209072238
+torchcam>=0.4.0
+streamlit>=1.36
+kaggle>=1.6

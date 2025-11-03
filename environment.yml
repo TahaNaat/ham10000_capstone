@@ -1,0 +1,14 @@
+﻿name: ham10000
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pytorch>=2.2
+  - torchvision>=0.17
+  - pytorch-cuda=12.1  # remove if no NVIDIA GPU
+  - pip
+  - pip:
+      - -r requirements.txt
