@@ -26,12 +26,7 @@ python -m src.train --config configs/resnet50_colab_long.yaml
 ```
 
 ### Option 2: Download Pre-trained Model
-If your team has shared a pre-trained model:
-
-1. Download `best.pt` from the shared link
-2. Create the appropriate directory: `runs/resnet50_colab_long/`
-3. Place `best.pt` inside: `runs/resnet50_colab_long/best.pt`
-4. Run the app: `streamlit run app/main_app.py`
+fl group slack mawjoud zip fih el model
 
 ## Notes
 
