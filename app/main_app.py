@@ -13,16 +13,10 @@ from torchcam.methods import SmoothGradCAMpp
 from torchcam.utils import overlay_mask
 from src.data.dataset import LABEL_ORDER
 
-# -------------------------
-# Streamlit App UI
-# -------------------------
 st.set_page_config(page_title="Skin Cancer Classifier", layout="wide")
 st.title("🩺 Advanced Skin Lesion Classification with Grad-CAM")
 st.write("Upload dermatoscopic images to classify and visualize model attention regions (HAM10000 dataset).")
 
-# -------------------------
-# Sidebar Configuration
-# -------------------------
 st.sidebar.header("⚙️ Settings")
 confidence_threshold = st.sidebar.slider(
     "Confidence Threshold (%)",
@@ -48,27 +42,58 @@ comparison_mode = st.sidebar.checkbox(
 st.sidebar.markdown("---")
 st.sidebar.info("**Model:** ResNet50 (Fine-tuned)\n\n**Classes:** 7 skin lesion types")
 
-# -------------------------
-# Model loading
-# -------------------------
 @st.cache_resource
 def load_model(model_path="runs/resnet50_colab_long/best.pt"):
+    from pathlib import Path
+    
+    model_file = Path(model_path)
+    if not model_file.exists():
+        alternative_paths = [
+            "runs/resnet50_colab_fast/best.pt",
+            "runs/resnet50_baseline/best.pt",
+            "../runs/resnet50_colab_long/best.pt",
+        ]
+        for alt_path in alternative_paths:
+            if Path(alt_path).exists():
+                model_path = alt_path
+                st.warning(f"⚠️ Using alternative model: {model_path}")
+                break
+        else:
+            raise FileNotFoundError(
+                f"❌ Model file not found: {model_path}\n\n"
+                f"Please train a model first:\n"
+                f"  python -m src.train --config configs/resnet50_colab_long.yaml\n\n"
+                f"Or place your trained best.pt in: {model_path}"
+            )
+    
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = models.resnet50(weights=None)
     model.fc = nn.Linear(model.fc.in_features, len(LABEL_ORDER))
-    model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
+    
+    try:
+        model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
+    except Exception as e:
+        raise RuntimeError(f"❌ Failed to load model weights: {str(e)}")
+    
     model.to(device)
     model.eval()
     return model, device
 
-# Load model with progress
-with st.spinner("🔄 Loading model..."):
-    model, device = load_model()
-    st.sidebar.success(f"✅ Model loaded on: **{device.upper()}**")
+try:
+    with st.spinner("🔄 Loading model..."):
+        model, device = load_model()
+        st.sidebar.success(f"✅ Model loaded on: **{device.upper()}**")
+except (FileNotFoundError, RuntimeError) as e:
+    st.error(str(e))
+    st.info(
+        "💡 **Quick Start:**\n\n"
+        "1. Download HAM10000 dataset\n"
+        "2. Run data split: `python -m src.data.split --meta data/raw/HAM10000_metadata.csv`\n"
+        "3. Train model: `python -m src.train --config configs/resnet50_colab_long.yaml`\n"
+        "4. Restart this app"
+    )
+    st.stop()
 
-# -------------------------
-# Image preprocessing
-# -------------------------
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -76,20 +101,14 @@ transform = transforms.Compose([
                          std=[0.229, 0.224, 0.225])
 ])
 
-# -------------------------
-# Helper Functions
-# -------------------------
 def validate_image(image_file):
-    """Validate uploaded image"""
     try:
         img = Image.open(image_file).convert("RGB")
-        # Check image dimensions
         if img.size[0] < 50 or img.size[1] < 50:
             return None, "Image too small (minimum 50x50 pixels)"
-        # Check file size (max 10MB)
-        image_file.seek(0, 2)  # Seek to end
+        image_file.seek(0, 2)
         size = image_file.tell()
-        image_file.seek(0)  # Reset
+        image_file.seek(0)
         if size > 10 * 1024 * 1024:
             return None, "Image too large (maximum 10MB)"
         return img, None
@@ -97,13 +116,11 @@ def validate_image(image_file):
         return None, f"Invalid image file: {str(e)}"
 
 def process_image(image, image_name="Image"):
-    """Process a single image and return results"""
+    cam_extractor = None
     try:
-        # Preprocess
         with st.spinner(f"🔍 Analyzing {image_name}..."):
             input_tensor = transform(image).unsqueeze(0).to(device)
             
-            # Forward pass
             with torch.no_grad():
                 output = model(input_tensor)
                 probabilities = torch.softmax(output, dim=1)[0]
@@ -111,12 +128,16 @@ def process_image(image, image_name="Image"):
                 pred_label = LABEL_ORDER[pred_idx]
                 confidence = probabilities[pred_idx].item()
             
-            # Grad-CAM
+            # Generate Grad-CAM heatmap (separate forward pass with gradients)
             cam_extractor = SmoothGradCAMpp(model, target_layer='layer4')
-            _ = model(input_tensor)
-            activation_map = cam_extractor(pred_idx, _)[0].squeeze().cpu().numpy()
+            try:
+                # Forward pass for Grad-CAM (gradients enabled automatically by cam_extractor)
+                output_gradcam = model(input_tensor)
+                activation_map = cam_extractor(pred_idx, output_gradcam)[0].squeeze().cpu().numpy()
+            finally:
+                # Always clean up hooks to prevent conflicts with subsequent runs
+                cam_extractor.remove_hooks()
             
-            # Overlay
             img_resized = image.resize((224, 224))
             gradcam_overlay = overlay_mask(
                 img_resized, 
@@ -137,13 +158,11 @@ def process_image(image, image_name="Image"):
         return None
 
 def display_results(results, image_name="Image", col_container=None):
-    """Display prediction results"""
     if results is None:
         return
     
     container = col_container if col_container else st
     
-    # Prediction with confidence check
     confidence_pct = results['confidence'] * 100
     if confidence_pct >= confidence_threshold:
         container.success(f"### 🧠 Predicted: **{results['pred_label'].upper()}**")
@@ -152,23 +171,20 @@ def display_results(results, image_name="Image", col_container=None):
     
     container.markdown(f"**Confidence:** {confidence_pct:.2f}%")
     
-    # Progress bar for confidence
     container.progress(results['confidence'])
     
-    # Side-by-side comparison
     container.markdown("---")
     container.subheader("📊 Visual Analysis")
     
     col1, col2 = container.columns(2)
     with col1:
         st.markdown("**Original Image**")
-        st.image(results['original_resized'], use_container_width=True)
+        st.image(results['original_resized'], width='stretch')
     
     with col2:
         st.markdown("**Grad-CAM Heatmap**")
-        st.image(results['gradcam_overlay'], use_container_width=True)
+        st.image(results['gradcam_overlay'], width='stretch')
     
-    # All class probabilities
     if show_all_predictions:
         container.markdown("---")
         container.subheader("📈 All Class Probabilities")
@@ -176,7 +192,6 @@ def display_results(results, image_name="Image", col_container=None):
             label: f"{results['probabilities'][i].item() * 100:.2f}%" 
             for i, label in enumerate(LABEL_ORDER)
         }
-        # Sort by probability
         sorted_probs = sorted(
             [(label, results['probabilities'][i].item()) for i, label in enumerate(LABEL_ORDER)],
             key=lambda x: x[1],
@@ -186,9 +201,6 @@ def display_results(results, image_name="Image", col_container=None):
             container.write(f"**{label.upper()}:** {prob * 100:.2f}%")
             container.progress(prob)
 
-# -------------------------
-# Upload Section
-# -------------------------
 st.markdown("---")
 
 if comparison_mode:
@@ -205,7 +217,6 @@ if comparison_mode:
             st.warning("⚠️ Please upload maximum 4 images for comparison")
             uploaded_files = uploaded_files[:4]
         
-        # Process all images
         cols = st.columns(min(len(uploaded_files), 2))
         
         for idx, uploaded_file in enumerate(uploaded_files):
@@ -213,16 +224,13 @@ if comparison_mode:
             with cols[col_idx]:
                 st.markdown(f"### Image {idx + 1}: {uploaded_file.name}")
                 
-                # Validate
                 image, error = validate_image(uploaded_file)
                 if error:
                     st.error(f"❌ {error}")
                     continue
                 
-                # Display original
-                st.image(image, caption=f"Uploaded: {uploaded_file.name}", use_container_width=True)
+                st.image(image, caption=f"Uploaded: {uploaded_file.name}", width='stretch')
                 
-                # Process and display results
                 results = process_image(image, f"Image {idx + 1}")
                 if results:
                     display_results(results, f"Image {idx + 1}", st)
@@ -238,24 +246,18 @@ else:
     )
     
     if uploaded_file is not None:
-        # Validate image
         image, error = validate_image(uploaded_file)
         
         if error:
             st.error(f"❌ {error}")
             st.info("💡 Please upload a valid image file (JPG, PNG) with minimum dimensions of 50x50 pixels and maximum size of 10MB.")
         else:
-            # Display original
-            st.image(image, caption="Uploaded Image", use_container_width=True)
+            st.image(image, caption="Uploaded Image", width='stretch')
             
-            # Process and display results
             results = process_image(image, uploaded_file.name)
             if results:
                 display_results(results, uploaded_file.name)
 
-# -------------------------
-# Footer
-# -------------------------
 st.markdown("---")
 st.markdown("""
     <div style='text-align: center'>

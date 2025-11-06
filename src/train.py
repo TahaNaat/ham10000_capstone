@@ -10,7 +10,6 @@ from src.data.dataset import HAM10000Dataset, LABEL_ORDER
 
 
 def build_transforms(size: int):
-    """Build image transforms for train and validation sets."""
     train_tf = transforms.Compose([
         transforms.Resize((size, size)),
         transforms.RandomHorizontalFlip(),
@@ -31,7 +30,6 @@ def build_transforms(size: int):
 
 
 def class_weights_from_csv(csv_path: str):
-    """Compute inverse-frequency class weights from CSV."""
     df = pd.read_csv(csv_path)
     counts = df['dx'].value_counts()
     total = counts.sum()
@@ -43,7 +41,6 @@ def class_weights_from_csv(csv_path: str):
 
 
 def get_device():
-    """Try DirectML → CUDA → CPU."""
     try:
         import torch_directml
         dml_device = torch_directml.device()
@@ -60,7 +57,6 @@ def get_device():
 
 
 def main(cfg_path: str):
-    # --- Load config safely ---
     with open(cfg_path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
@@ -69,11 +65,8 @@ def main(cfg_path: str):
 
     print("✅ Loaded config keys:", list(cfg.keys()))
 
-    # --- Set random seed & device ---
     torch.manual_seed(cfg['seed'])
     device = get_device()
-
-    # --- Build datasets & dataloaders ---
     train_tf, val_tf = build_transforms(cfg['image_size'])
     train_ds = HAM10000Dataset(cfg['train_csv'], transform=train_tf)
     val_ds = HAM10000Dataset(cfg['val_csv'], transform=val_tf)
@@ -83,7 +76,6 @@ def main(cfg_path: str):
     val_dl = DataLoader(val_ds, batch_size=cfg['batch_size'], shuffle=False,
                         num_workers=cfg['num_workers'])
 
-    # --- Build model ---
     if cfg['model'].lower() == 'resnet18':
         model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
         model.fc = nn.Linear(model.fc.in_features, len(LABEL_ORDER))
@@ -95,7 +87,6 @@ def main(cfg_path: str):
 
     model = model.to(device)
 
-    # --- Loss function ---
     if cfg.get('use_class_weights', False):
         w = class_weights_from_csv(cfg['train_csv']).to(device)
         criterion = nn.CrossEntropyLoss(weight=w,
@@ -103,12 +94,10 @@ def main(cfg_path: str):
     else:
         criterion = nn.CrossEntropyLoss(label_smoothing=cfg.get('label_smoothing', 0.0))
 
-    # --- Optimizer ---
     optimizer = torch.optim.AdamW(model.parameters(),
                                   lr=float(cfg['lr']),
                                   weight_decay=float(cfg['weight_decay']))
 
-    # --- Training loop ---
     best_val = 0.0
     out_dir = Path(cfg['out_dir'])
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -133,7 +122,6 @@ def main(cfg_path: str):
 
         train_acc = correct / total
 
-        # --- Validation ---
         model.eval()
         tot_v, cor_v = 0, 0
         with torch.no_grad():
@@ -148,7 +136,6 @@ def main(cfg_path: str):
         print(f"Epoch {epoch:02d}/{cfg['max_epochs']} | "
               f"train_acc={train_acc:.3f} val_acc={val_acc:.3f}")
 
-        # --- Save best model ---
         if val_acc > best_val:
             best_val = val_acc
             torch.save(model.state_dict(), out_dir / "best.pt")

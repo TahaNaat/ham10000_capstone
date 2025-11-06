@@ -1,7 +1,9 @@
 ﻿import argparse
 from pathlib import Path
 import pandas as pd
+
 LABEL_ORDER = ['nv','mel','bkl','bcc','akiec','vasc','df']
+
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--splits', type=Path, default=Path('data/processed'))

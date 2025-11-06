@@ -1,9 +1,9 @@
 seed: 42
 model: resnet50
-image_size: 160       # smaller input (224→160) = 2–3× faster
-batch_size: 32        # fits easily on T4
+image_size: 160      
+batch_size: 32        
 num_workers: 2
-max_epochs: 5         # start small; you can always resume
+max_epochs: 5         
 lr: 0.0003
 weight_decay: 0.0001
 label_smoothing: 0.05
