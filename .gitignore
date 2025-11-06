@@ -21,6 +21,7 @@ data/external/
 
 # Training outputs (model checkpoints, logs, tensorboard)
 runs/
+!runs/README.md
 outputs/
 logs/
 checkpoints/

@@ -34,6 +34,10 @@ This project implements a deep learning pipeline for classifying skin lesions us
 
 ## 🚀 Quick Start
 
+> ⚠️ **Important:** The trained model (`runs/resnet50_colab_long/best.pt`) is **NOT included** in this repository due to its large size (~98 MB). You must either:
+> 1. Train the model yourself (see Step 4 below), OR
+> 2. Download a pre-trained model (contact the team for access)
+
 ### 1. Environment Setup
 
 **Option A: Conda (Recommended)**
@@ -280,7 +284,13 @@ streamlit run app/main_app.py --server.runOnSave true
 - Only `best.pt` saved (based on validation accuracy)
 - Located in `runs/{config_name}/best.pt`
 - Load in app: `torch.load('runs/resnet50_colab_long/best.pt')`
-- **Not version controlled** (see `.gitignore`)
+- **Not version controlled** (see `.gitignore`) - models are too large for Git
+
+**Sharing Trained Models (Optional):**
+- Use **Google Drive/OneDrive** for team sharing
+- Use **Git LFS** for version-controlled large files
+- Use **Hugging Face Hub** for public model hosting
+- Include download link in README for easy access
 
 ---
 
